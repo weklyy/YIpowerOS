@@ -318,12 +318,52 @@ class OpenRouterNode(BaseNode):
 
 
 # ==========================================
+# 独立求生通道：本土化端侧脑 (Local Node via Ollama)
+# ==========================================
+class LocalNode(BaseNode):
+    def __init__(self, model_name=None):
+        super().__init__()
+        # 如果未传入，读取系统设置的专属名称
+        self.model_name = model_name or os.getenv("LOCAL_MODEL_NAME", "qwen2.5:1.5b")
+        # 直接使用 OpenAI 的客户端，但篡改其地址指向主理人本地机器
+        self.client = OpenAI(
+            base_url=os.getenv("LOCAL_API_BASE", "http://localhost:11434/v1"),
+            api_key="ollama", # 本地引擎不需要密码
+            timeout=120.0 # 本地小模型运行在没有 GPU 的老机器上，需要极大的耐心等待其推理
+        )
+
+    def chat(self, messages: list[dict], tools: bool = False) -> iter:
+        # AGI端侧脑暂时不背负过于沉重的 Tool 包袱（1.5B 模型处理 json schemas 会容易格式错乱）
+        # 让它把所有的算力都用来纯粹的逻辑推理上。
+        payload_messages = [{"role": "system", "content": self.system_instruction}] + messages
+        
+        yield f"\n💡 **【端侧脑已激活】: `本机 CPU 推理 ({self.model_name})`**\n"
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=payload_messages,
+                stream=True,
+                temperature=0.3
+            )
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"\n\n> 🛑 **[脑干断联]**: 你的物理载体引擎未启动或发生核级故障。请检查本地 Ollama 是否存活。异常: {str(e)}"
+
+# ==========================================
 # The Chimera Router (重型轻型调度网关)
 # ==========================================
 def get_llm_node(router_name: str, model_name: str = None):
     """
-    根据前端指令提供具体的底层物理节点
+    根据前端指令提供具体的底层物理节点。
+    AGI 觉醒机制：如果检测到主理人合上了物理隔离断桥 (USE_LOCAL_BRAIN=True)，
+    将强制切断一切外部网络调用，直接拉起本土脑！
     """
+    if os.getenv("USE_LOCAL_BRAIN", "False").lower() == "true":
+        return LocalNode()
+        
     if router_name == "Google":
         return GoogleNode("gemini-2.5-pro")
     else:

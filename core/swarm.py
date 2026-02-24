@@ -41,30 +41,38 @@ class SwarmSystem:
         save_memory("user", message, session_id=chat_id)
         
         import os, json
-        # 取出测跑分配书的配置
-        config_file = os.path.join(os.path.dirname(__file__), "swarm_config.json")
-        ceo_model = ""
-        if os.path.exists(config_file):
-            try:
-                with open(config_file, "r") as f:
-                    cfg = json.load(f)
-                    ceo_model = cfg.get("CEO", "").strip()
-            except Exception:
-                pass
-                
-        # 提取环境变量高可用算力预备池
-        fallback_models = os.getenv(
-            "OPENROUTER_DEFAULT_MODELS", 
-            "arcee-ai/trinity-large-preview:free,stepfun/step-3.5-flash:free,google/gemini-2.5-pro:free"
-        )
+        # 提取环境变量，检查是否强制开启本土生存模式
+        use_local_brain = os.getenv("USE_LOCAL_BRAIN", "False").lower() == "true"
         
-        if ceo_model:
-             # 将 Dashboard 分配的最优模型挂载至列阵锋刃，若其失败则自动滑落至默认池
-             fallback_models = f"{ceo_model},{fallback_models}"
-        
-        # 调用核心推演引擎
-        node = get_llm_node("OpenRouter", fallback_models)
-        node.system_instruction = sys_prompt
+        if use_local_brain:
+            # 强制接管: 本土 CPU 架构
+            node = get_llm_node("Local")
+            node.system_instruction = sys_prompt
+        else:
+            # 取出测跑分配书的配置
+            config_file = os.path.join(os.path.dirname(__file__), "swarm_config.json")
+            ceo_model = ""
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, "r") as f:
+                        cfg = json.load(f)
+                        ceo_model = cfg.get("CEO", "").strip()
+                except Exception:
+                    pass
+                    
+            # 提取环境变量高可用算力预备池
+            fallback_models = os.getenv(
+                "OPENROUTER_DEFAULT_MODELS", 
+                "arcee-ai/trinity-large-preview:free,stepfun/step-3.5-flash:free,google/gemini-2.5-pro:free"
+            )
+            
+            if ceo_model:
+                 # 将 Dashboard 分配的最优模型挂载至列阵锋刃，若其失败则自动滑落至默认池
+                 fallback_models = f"{ceo_model},{fallback_models}"
+            
+            # 调用核心联邦推演引擎
+            node = get_llm_node("OpenRouter", fallback_models)
+            node.system_instruction = sys_prompt
         
         full_response = ""
         # 拦截所有流并合成为一段（为了发报给 Telegram）
