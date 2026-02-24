@@ -90,6 +90,7 @@ with st.sidebar:
     if engine_choice == "OpenRouter":
         st.markdown("#### 🧠 模型指定")
         or_model_options = [
+            "arcee-ai/trinity-large-preview:free",
             "deepseek/deepseek-chat",
             "deepseek/deepseek-reasoner",
             "anthropic/claude-3-haiku",
@@ -142,12 +143,15 @@ if prompt := st.chat_input("输入推演指令 / 执行任务..."):
 
     # 调用相应的路由节点
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
         try:
             # 获取算子节点
             node = get_llm_node(engine_choice, selected_model)
+            
+            # 【溯源反馈】：前置显示当前调用的真实底层模型
+            st.caption(f"⚡ `[物理链路接管]：{node.model_name}`")
+            
+            message_placeholder = st.empty()
+            full_response = ""
             
             # TODO: 将历史消息格式化以适应不同节点的参数，此处仅传最新一条和较短的记录做演示
             request_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages if m["role"] == "user"]
