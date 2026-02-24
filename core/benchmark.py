@@ -111,12 +111,32 @@ class BenchmarkEngine:
         return result
 
     def batch_run(self, models: list) -> list:
+        import concurrent.futures
         results = []
-        for model in models:
-            if not model.strip(): continue
-            res = self.run_tests_on_model(model.strip())
-            results.append(res)
-            time.sleep(1) # 略微等待，防止并发限流
+        valid_models = [m.strip() for m in models if m.strip()]
+        
+        # 建立并发考场，最多允许 10 个模型同时考试
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_model = {
+                executor.submit(self.run_tests_on_model, model): model
+                for model in valid_models
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_model):
+                try:
+                    res = future.result()
+                    results.append(res)
+                except Exception as e:
+                    model = future_to_model[future]
+                    logging.error(f"❌ 节点 {model} 的测跑线程发生硬崩溃: {str(e)}")
+                    # 生成一份 0 分的伪造答卷
+                    results.append({
+                        "model_name": model,
+                        "overall_score": 0,
+                        "rating": "F",
+                        "success_rate": "0/3",
+                        "details": {}
+                    })
             
         # 根据综合跑分排序
         results.sort(key=lambda x: x["overall_score"], reverse=True)
