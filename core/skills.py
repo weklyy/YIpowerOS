@@ -8,16 +8,28 @@ def web_search(query: str, max_results: int = 3) -> str:
     """
     print(f"[YI-CORE/Skill] 执行检索: {query}")
     try:
-        results = DDGS().text(query, max_results=max_results)
+        from duckduckgo_search import DDGS
+        ddgs = DDGS()
+        # 将迭代器直接展开为列表
+        results = list(ddgs.text(query, max_results=max_results))
+        
+        # 降级容错机制：如果长尾词搜索不到，只取前2个分词再查一遍
+        if not results:
+            words = query.split()
+            if len(words) > 1:
+                query_fallback = " ".join(words[:max(1, len(words)-1)])
+                print(f"[YI-CORE/Skill] 检索降级至: {query_fallback}")
+                results = list(ddgs.text(query_fallback, max_results=max_results))
+                
         if not results:
             return "检索无结果。"
         
         summary = "\\n".join(
-            [f"标题: {r['title']}\\n链接: {r['href']}\\n摘要: {r['body']}" for r in results]
+            [f"标题: {r.get('title', '未知')}\\n链接: {r.get('href', '未知')}\\n摘要: {r.get('body', '无')}" for r in results]
         )
         return summary
     except Exception as e:
-        return f"检索失败: {str(e)}"
+        return f"检索遭遇拦截: {str(e)}"
 
 import subprocess
 import os

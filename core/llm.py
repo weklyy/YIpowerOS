@@ -154,6 +154,7 @@ class OpenRouterNode(BaseNode):
                 
             # 某些 OpenRouter 免费模型不支持复杂的多轮 Tool Payload，做降级处理
             try:
+                has_yielded = False
                 second_resp = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=payload_messages,
@@ -162,7 +163,13 @@ class OpenRouterNode(BaseNode):
                 )
                 for chunk in second_resp:
                     if chunk.choices and chunk.choices[0].delta.content:
+                        has_yielded = True
                         yield chunk.choices[0].delta.content
+                
+                # 如果流式结束但根本没有输出任何字符（静默失败），则强行触发回退机制
+                if not has_yielded:
+                    raise Exception("Model silent empty yield.")
+                    
             except Exception as e:
                 # 若第二轮请求因 payload 问题被拒，强行降级为只带 system, user 和 tool 结果的纯净文本请求
                 raw_messages = [
