@@ -7,7 +7,32 @@ from core.llm import get_llm_node
 from core.automation import init_automation, get_jobs
 
 # 预加载本地环境变量
+# 预加载本地环境变量
 load_dotenv()
+
+import json
+
+CUSTOM_MODELS_FILE = "custom_models.json"
+
+def get_custom_models():
+    if os.path.exists(CUSTOM_MODELS_FILE):
+        with open(CUSTOM_MODELS_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_custom_model(m):
+    models = get_custom_models()
+    if m not in models:
+        models.append(m)
+        with open(CUSTOM_MODELS_FILE, "w") as f:
+            json.dump(models, f)
+
+def remove_custom_model(m):
+    models = get_custom_models()
+    if m in models:
+        models.remove(m)
+        with open(CUSTOM_MODELS_FILE, "w") as f:
+            json.dump(models, f)
 
 # ==========================================
 # 页面配置：Light Mode & Minimalist
@@ -89,20 +114,32 @@ with st.sidebar:
     selected_model = None
     if engine_choice == "OpenRouter":
         st.markdown("#### 🧠 模型指定")
-        or_model_options = [
+        base_options = [
             "arcee-ai/trinity-large-preview:free",
             "deepseek/deepseek-chat",
             "deepseek/deepseek-reasoner",
             "anthropic/claude-3-haiku",
             "meta-llama/llama-3.3-70b-instruct",
             "google/gemini-2.5-flash",
-            "自定义 (Manual)"
         ]
+        
+        custom_opts = get_custom_models()
+        or_model_options = base_options + custom_opts + ["自定义 (Manual)"]
+        
         or_model_choice = st.selectbox("选择或输入模型名", or_model_options)
+        
         if or_model_choice == "自定义 (Manual)":
             selected_model = st.text_input("填入 OpenRouter Model ID:", "openai/gpt-4o-mini")
+            if st.button("➕ 保存该模型"):
+                if selected_model:
+                    save_custom_model(selected_model)
+                    st.rerun()
         else:
             selected_model = or_model_choice
+            if or_model_choice in custom_opts:
+                if st.button("🗑️ 移除此自定义模型"):
+                    remove_custom_model(or_model_choice)
+                    st.rerun()
 
     st.markdown("---")
     st.markdown("### ⚙️ 后台守护进程")
@@ -159,8 +196,11 @@ if prompt := st.chat_input("输入推演指令 / 执行任务..."):
                  request_messages = [{"role": "user", "content": prompt}]
             
             # 流式获取输出
-            for chunk in node.chat(messages=request_messages):
-                if chunk:
+            for chunk in node.chat(messages=request_messages, tools=True):
+                if isinstance(chunk, dict) and chunk.get("type") == "tool_status":
+                    with st.status(chunk["content"], expanded=True):
+                        st.markdown("⏳ 算子执行完毕，等待主脑汇编情报...")
+                elif isinstance(chunk, str):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
             

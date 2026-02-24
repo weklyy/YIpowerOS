@@ -70,21 +70,85 @@ class OpenRouterNode(BaseNode):
             api_key=os.getenv("OPENROUTER_API_KEY"),
         )
 
-    def chat(self, messages: list[dict], tools: list = None) -> iter:
+    def chat(self, messages: list[dict], tools: bool = False) -> iter:
         # 强制在顶部注入夺舍协议
         payload_messages = [{"role": "system", "content": self.system_instruction}] + messages
         
+        openai_tools = None
+        if tools:
+            from .skills import TOOLS_SCHEMA
+            openai_tools = TOOLS_SCHEMA
+            
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=payload_messages,
             stream=True,
             temperature=0.3,
-            # tools=tools # 需要时挂载
+            tools=openai_tools
         )
         
+        tool_calls_dict = {}
+        is_tool_call = False
+        
         for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            
+            if delta.tool_calls:
+                is_tool_call = True
+                for tc in delta.tool_calls:
+                    index = tc.index
+                    if index not in tool_calls_dict:
+                        tool_calls_dict[index] = {"id": tc.id, "name": tc.function.name, "arguments": ""}
+                    if tc.function.arguments:
+                        tool_calls_dict[index]["arguments"] += tc.function.arguments
+            elif delta.content and not is_tool_call:
+                yield delta.content
+                
+        if is_tool_call:
+            from .skills import execute_skill
+            import json
+            
+            assistant_tool_calls = []
+            for idx, tc_data in tool_calls_dict.items():
+                assistant_tool_calls.append({
+                    "id": tc_data["id"],
+                    "type": "function",
+                    "function": {"name": tc_data["name"], "arguments": tc_data["arguments"]}
+                })
+            
+            payload_messages.append({"role": "assistant", "tool_calls": assistant_tool_calls})
+            
+            for idx, tc_data in tool_calls_dict.items():
+                fn_name = tc_data["name"]
+                fn_args_str = tc_data["arguments"]
+                yield {"type": "tool_status", "content": f"🛠️ **【动态挂载触发】**: 正在执行核心算子 `{fn_name}`..."}
+                
+                try:
+                    args = json.loads(fn_args_str)
+                except Exception:
+                    args = {}
+                
+                result = execute_skill(fn_name, args)
+                
+                payload_messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc_data["id"],
+                    "name": fn_name,
+                    "content": str(result)
+                })
+                
+            # 第 2 次路由，带入执行结果供大模型汇编
+            second_resp = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=payload_messages,
+                stream=True,
+                temperature=0.3
+            )
+            for chunk in second_resp:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
 
 
 # ==========================================
