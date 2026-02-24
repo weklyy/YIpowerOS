@@ -124,7 +124,10 @@ with st.sidebar:
         ]
         
         custom_opts = get_custom_models()
-        or_model_options = base_options + custom_opts + ["自定义 (Manual)"]
+        # 对自定义模型加前缀以便视觉区分
+        display_custom_opts = [f"[自定义] {m}" for m in custom_opts]
+        
+        or_model_options = base_options + display_custom_opts + ["自定义 (Manual)"]
         
         or_model_choice = st.selectbox("选择或输入模型名", or_model_options)
         
@@ -135,11 +138,13 @@ with st.sidebar:
                     save_custom_model(selected_model)
                     st.rerun()
         else:
-            selected_model = or_model_choice
-            if or_model_choice in custom_opts:
+            if or_model_choice.startswith("[自定义] "):
+                selected_model = or_model_choice.replace("[自定义] ", "")
                 if st.button("🗑️ 移除此自定义模型"):
-                    remove_custom_model(or_model_choice)
+                    remove_custom_model(selected_model)
                     st.rerun()
+            else:
+                selected_model = or_model_choice
 
     st.markdown("---")
     st.markdown("### ⚙️ 后台守护进程")

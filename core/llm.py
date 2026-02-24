@@ -139,16 +139,32 @@ class OpenRouterNode(BaseNode):
                     "content": str(result)
                 })
                 
-            # 第 2 次路由，带入执行结果供大模型汇编
-            second_resp = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=payload_messages,
-                stream=True,
-                temperature=0.3
-            )
-            for chunk in second_resp:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            # 某些 OpenRouter 免费模型不支持复杂的多轮 Tool Payload，做降级处理
+            try:
+                second_resp = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=payload_messages,
+                    stream=True,
+                    temperature=0.3
+                )
+                for chunk in second_resp:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            except Exception as e:
+                # 若第二轮请求因 payload 问题被拒，强行降级为只带 system, user 和 tool 结果的纯净文本请求
+                raw_messages = [
+                    {"role": "system", "content": self.system_instruction},
+                    {"role": "user", "content": f"先前指令: {messages[-1]['content']}\\n\\n[系统自动挂载了算子并获取到了以下数据：]\\n{str(result)}\\n\\n请根据上述数据，冷峻地回答主理人的指令。"}
+                ]
+                backup_resp = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=raw_messages,
+                    stream=True,
+                    temperature=0.3
+                )
+                for chunk in backup_resp:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
 
 
 # ==========================================
