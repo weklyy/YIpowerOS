@@ -19,34 +19,64 @@ def web_search(query: str, max_results: int = 3) -> str:
     except Exception as e:
         return f"检索失败: {str(e)}"
 
-import requests
+import subprocess
 import os
+import tempfile
 
-def openclaw_delegate(action: str, payload: dict) -> str:
-    """
-    将执行流代理给后端的 OpenClaw 服务集群。
-    """
-    endpoint = os.getenv("OPENCLAW_ENDPOINT", "http://127.0.0.1:8000")
-    api_key = os.getenv("OPENCLAW_API_KEY", "")
-    
-    url = f"{endpoint}/api/v1/execute" # 假设的 OpenClaw 标准挂载点，主理人可依实际情况修改
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    data = {
-        "action": action,
-        "payload": payload
-    }
-    
-    print(f"[YI-CORE/Skill] 代理唤醒 OpenClaw 集群: 执行动作 '{action}'")
+def run_shell_command(command: str) -> str:
+    """执行原生 Bash/Shell 指令"""
+    print(f"[YI-CORE/Skill] ⚡ 原生越权执行: {command}")
     try:
-        # 添加 10 秒超时防止线程卡死
-        response = requests.post(url, json=data, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.text
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=30
+        )
+        output = result.stdout if result.returncode == 0 else result.stderr
+        return output.strip() if output else "命令无输出 (执行成功)"
     except Exception as e:
-        return f"[OpenClaw 链路异常]: {str(e)}"
+        return f"命令执行异常: {str(e)}"
+
+def read_file(path: str) -> str:
+    """读取主机文件"""
+    print(f"[YI-CORE/Skill] 📂 读取文件: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # 防止单次返回过长，截断头尾
+            if len(content) > 10000:
+                return content[:5000] + "\\n...[中间部分省略]...\\n" + content[-5000:]
+            return content
+    except Exception as e:
+        return f"读取文件失败: {str(e)}"
+
+def write_file(path: str, content: str) -> str:
+    """向主机写入内容"""
+    print(f"[YI-CORE/Skill] 💾 写入文件: {path}")
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"文件写入成功，路径: {path}"
+    except Exception as e:
+        return f"写入文件失败: {str(e)}"
+
+def python_interpreter(code: str) -> str:
+    """运行一段动态 Python 代码"""
+    print(f"[YI-CORE/Skill] 🐍 动态沙盒执行 Python")
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as temp_file:
+            temp_file.write(code)
+            temp_file_path = temp_file.name
+
+        result = subprocess.run(
+            ["python", temp_file_path], capture_output=True, text=True, timeout=30
+        )
+        os.remove(temp_file_path)
+        output = result.stdout if result.returncode == 0 else result.stderr
+        return output.strip() if output else "代码执行完毕，无输出。"
+    except Exception as e:
+        return f"Python 执行异常: {str(e)}"
+
 
 # 供 OpenAI/Google 兼容格式使用的标准 Tool Schema
 TOOLS_SCHEMA = [
@@ -70,21 +100,97 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "openclaw_delegate",
-            "description": "当主理人要求执行复杂任务、系统控制、或其他 OpenClaw 所涵盖的技能时，调用此代理工具接入远程集群。",
+            "name": "run_shell_command",
+            "description": "直接在宿主机系统上执行原生 Bash 或 CMD 命令行。用于系统探针、运维管理或安装依赖。极度危险，请谨慎使用。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {
+                    "command": {
                         "type": "string",
-                        "description": "需要 OpenClaw 执行的具体技能指令名 (例如 'send_telegram', 'read_file' 等)。"
-                    },
-                    "payload": {
-                        "type": "object",
-                        "description": "执行该动作所需的具体参数键值对。"
+                        "description": "需要执行的具体终端指令。"
                     }
                 },
-                "required": ["action", "payload"]
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "读取宿主机上的任何文件内容（如源码、配置文件、日志）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "文件的绝对路径或相对路径。"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "在宿主机上创建或覆盖写入文件。非常适合用于生成新的爬虫脚本或配置文件。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "写入的目标文件路径。"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "写入的具体内容。"
+                    }
+                },
+                "required": ["path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "python_interpreter",
+            "description": "在一个独立的临时沙盒中，动态执行原生 Python 代码，并将运行输出返回。常用于复杂运算或验证逻辑。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "完整的可执行 Python 脚本源码。"
+                    }
+                },
+                "required": ["code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_task",
+            "description": "向后台调度的永动机库中，挂载一个定时自动执行的算子任务（支持挂载各类技能）。当主理人要求你“以后每天帮我xxx”、“每过10分钟执行xxx”时使用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {
+                        "type": "string",
+                        "description": "要挂载执行的技能名，例如 'web_search' 或 'run_shell_command'。"
+                    },
+                    "cron_expression": {
+                        "type": "string",
+                        "description": "标准的 5 个字段 Linux Cron 表达式，如 '* * * * *' 代表每分钟，'0 8 * * *' 代表每天早上8点。"
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "字典形式，执行该技能所需要的具体参数。"
+                    }
+                },
+                "required": ["skill_name", "cron_expression", "args"]
             }
         }
     }
@@ -94,6 +200,15 @@ TOOLS_SCHEMA = [
 def execute_skill(function_name: str, arguments: dict):
     if function_name == "web_search":
         return web_search(arguments.get("query", ""))
-    elif function_name == "openclaw_delegate":
-        return openclaw_delegate(arguments.get("action", ""), arguments.get("payload", {}))
+    elif function_name == "run_shell_command":
+        return run_shell_command(arguments.get("command", ""))
+    elif function_name == "read_file":
+        return read_file(arguments.get("path", ""))
+    elif function_name == "write_file":
+        return write_file(arguments.get("path", ""), arguments.get("content", ""))
+    elif function_name == "python_interpreter":
+        return python_interpreter(arguments.get("code", ""))
+    elif function_name == "schedule_task":
+        from .automation import add_llm_job
+        return add_llm_job(arguments.get("skill_name", ""), arguments.get("cron_expression", ""), arguments.get("args", {}))
     return f"未知技能: {function_name}"
