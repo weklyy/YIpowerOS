@@ -1,21 +1,21 @@
 # core/skills.py
 from duckduckgo_search import DDGS
 
-def web_search(query: str, max_results: int = 3) -> str:
+def web_search(keywords: str, max_results: int = 3) -> str:
     """
     使用 DuckDuckGo 执行轻量级 Web 检索。
     返回合并后的摘要文本，供大模型参考。
     """
-    print(f"[YI-CORE/Skill] 执行检索: {query}")
+    print(f"[YI-CORE/Skill] 执行检索: {keywords}")
     try:
         from duckduckgo_search import DDGS
         ddgs = DDGS()
         # 将迭代器直接展开为列表
-        results = list(ddgs.text(query, max_results=max_results))
+        results = list(ddgs.text(keywords, max_results=max_results))
         
         # 降级容错机制：如果长尾词搜索不到，只取前2个分词再查一遍
         if not results:
-            words = query.split()
+            words = keywords.split()
             if len(words) > 1:
                 query_fallback = " ".join(words[:max(1, len(words)-1)])
                 print(f"[YI-CORE/Skill] 检索降级至: {query_fallback}")
@@ -132,12 +132,12 @@ BASE_TOOLS_SCHEMA = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "keywords": {
                         "type": "string",
                         "description": "要搜索的关键词短语，尽可能精简有效。"
                     }
                 },
-                "required": ["query"]
+                "required": ["keywords"]
             }
         }
     },
@@ -296,10 +296,9 @@ def get_all_tools() -> list:
                     print(f"[YI-CORE/Skill] 热挂载异常 {mod_name}: {e}")
     return tools
 
-# 路由函数执行
 def execute_skill(function_name: str, arguments: dict):
     if function_name == "web_search":
-        return web_search(arguments.get("query", ""))
+        return web_search(arguments.get("keywords", ""))
     elif function_name == "run_shell_command":
         return run_shell_command(arguments.get("command", ""))
     elif function_name == "read_file":
