@@ -115,8 +115,8 @@ class BenchmarkEngine:
         results = []
         valid_models = [m.strip() for m in models if m.strip()]
         
-        # 建立并发考场，最多允许 10 个模型同时考试
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # 建立并发考场，最多允许 20 个模型同时考试
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             future_to_model = {
                 executor.submit(self.run_tests_on_model, model): model
                 for model in valid_models
