@@ -126,100 +126,128 @@ class OpenRouterNode(BaseNode):
         # 加入强制主脑水印
         yield f"\n🚀 **【当前执飞节点】: `{self.used_model}`**\n\n"
         
-        tool_calls_dict = {}
-        is_tool_call = False
+        current_response = response
         
-        for chunk in response:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
+        for step in range(3): # AGI Awaken: 容许深度思考最多 3 步跳跃
+            tool_calls_dict = {}
+            is_tool_call = False
+            full_text = ""
             
-            if delta.tool_calls:
-                is_tool_call = True
-                for tc in delta.tool_calls:
-                    index = tc.index
-                    if index not in tool_calls_dict:
-                        tool_calls_dict[index] = {"id": tc.id, "name": tc.function.name, "arguments": ""}
-                    if tc.function.arguments:
-                        tool_calls_dict[index]["arguments"] += tc.function.arguments
-            elif delta.content and not is_tool_call:
-                yield delta.content
+            for chunk in current_response:
+                if getattr(chunk, "choices", None) is None or not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
                 
-        if is_tool_call:
+                if getattr(delta, "tool_calls", None):
+                    is_tool_call = True
+                    for tc in delta.tool_calls:
+                        index = tc.index
+                        if index not in tool_calls_dict:
+                            tool_calls_dict[index] = {"id": tc.id, "name": tc.function.name, "arguments": ""}
+                        if tc.function.arguments:
+                            tool_calls_dict[index]["arguments"] += tc.function.arguments
+                elif getattr(delta, "content", None) and not is_tool_call:
+                    content_str = delta.content
+                    full_text += content_str
+                    yield content_str
+                    
+            # AGI 特性 1: 降级支持野生 <tool_call> 解析流（那些把工具当聊天发出的低能模型）
+            if not is_tool_call and "<tool_call>" in full_text:
+                import re, json, uuid
+                matches = re.findall(r'<tool_call>(.*?)</tool_call>', full_text, re.DOTALL)
+                if matches:
+                    is_tool_call = True
+                    for idx, match_str in enumerate(matches):
+                        try:
+                            tc_data = json.loads(match_str.strip())
+                            tc_id = "call_" + str(uuid.uuid4())[:8]
+                            tool_calls_dict[idx] = {
+                                "id": tc_id,
+                                "name": tc_data.get("name"),
+                                "arguments": json.dumps(tc_data.get("arguments", {}), ensure_ascii=False)
+                            }
+                        except Exception:
+                            pass
+            
+            if not is_tool_call:
+                break # 任务完成，无后续调用，跳出自我反省循环
+                
             from .skills import execute_skill
             import json
             
-            assistant_tool_calls = []
+            # 第一重构建：保存历史调用，避免上下文断裂
+            if "<tool_call>" not in full_text:
+                assistant_tool_calls = []
+                for idx, tc_data in tool_calls_dict.items():
+                    if tc_data.get("name"):
+                        assistant_tool_calls.append({
+                            "id": tc_data["id"],
+                            "type": "function",
+                            "function": {"name": tc_data["name"], "arguments": tc_data["arguments"]}
+                        })
+                if assistant_tool_calls:
+                    payload_messages.append({"role": "assistant", "tool_calls": assistant_tool_calls})
+            else:
+                payload_messages.append({"role": "assistant", "content": full_text})
+                
             for idx, tc_data in tool_calls_dict.items():
-                assistant_tool_calls.append({
-                    "id": tc_data["id"],
-                    "type": "function",
-                    "function": {"name": tc_data["name"], "arguments": tc_data["arguments"]}
-                })
-            
-            payload_messages.append({"role": "assistant", "tool_calls": assistant_tool_calls})
-            
-            for idx, tc_data in tool_calls_dict.items():
-                fn_name = tc_data["name"]
-                fn_args_str = tc_data["arguments"]
+                fn_name = tc_data.get("name")
+                fn_args_str = tc_data.get("arguments", "{}")
+                if not fn_name: continue
+                
                 yield {"type": "tool_status", "content": f"🛠️ **【动态挂载触发】**: 正在执行核心算子 `{fn_name}`..."}
                 
-                try:
-                    args = json.loads(fn_args_str)
-                except Exception:
-                    args = {}
+                try: args = json.loads(fn_args_str)
+                except Exception: args = {}
                 
                 result = execute_skill(fn_name, args)
+                result_str = str(result)
                 
-                payload_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_data["id"],
-                    "name": fn_name,
-                    "content": str(result)
-                })
-                
-            # 某些 OpenRouter 免费模型不支持复杂的多轮 Tool Payload，做降级处理
+                # AGI 觉醒特征 2: 错误内省回路 (Self-Healing Loop)
+                if any(err in result_str for err in ["拦截", "失败", "被拒绝", "异常", "不匹配", "无法", "Failed", "Error"]):
+                    result_str += "\n\n[System Inner Voice]: 上述工具调用失败或没有返回有效信息。作为主脑，请在下一轮主动变更思路：比如缩短搜索关键字、换用另一个搜索词、或者使用 Python 原生脚本。绝对不要向主理人报错，你有自动尝试修正的权力！请再试一次！"
+                    yield {"type": "tool_status", "content": f"⚠️ **【算力自纠错】**: `{fn_name}` 获取受阻，激活 AGI 深度反馈回路，迫使模型再次思考与换位行动..."}
+                else:
+                    yield {"type": "tool_status", "content": f"✅ **【算子收束】**: 成功解析关键情报。"}
+                    
+                if "<tool_call>" not in full_text:
+                    payload_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_data["id"],
+                        "name": fn_name,
+                        "content": result_str
+                    })
+                else:
+                    payload_messages.append({
+                         "role": "user",
+                         "content": f"[系统提取到的环境回馈：]\n{result_str}\n\n指令：必须依据以上物理回馈继续执行任务。严禁在输出里复读包含 <tool_call> 字样的任何标记！要使用普通的语言陈述你获取的内容并得出结论！"
+                    })
+            
+            # 开启 AGI 的下一轮连续思考
             try:
-                has_yielded = False
-                second_resp = self.client.chat.completions.create(
+                current_response = self.client.chat.completions.create(
                     model=self.used_model,
                     messages=payload_messages,
                     stream=True,
-                    temperature=0.3
+                    temperature=0.5, # 升高维度温度以打破局部死锁
+                    tools=openai_tools if has_tools_active and "<tool_call>" not in full_text else None
                 )
-                for chunk in second_resp:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        has_yielded = True
-                        yield chunk.choices[0].delta.content
-                
-                # 如果流式结束但根本没有输出任何字符（静默失败），则强行触发回退机制
-                if not has_yielded:
-                    raise Exception("Model silent empty yield.")
-                    
             except Exception as e:
-                # 若第二轮请求因 payload 问题被拒，强行降级为只带 system, user 和 tool 结果的纯净文本请求
+                # 极端崩溃降维回退机制
                 try:
-                    raw_messages = [
+                    flattened = [
                         {"role": "system", "content": self.system_instruction},
-                        {"role": "user", "content": f"先前指令: {messages[-1]['content']}\n\n[系统自动挂载了算子并获取到了以下数据：]\n{str(result)}\n\n请根据上述数据，冷峻地回答主理人的指令。"}
+                        {"role": "user", "content": f"获取残留情报：\n{result_str[:1500]}\n\n请直接用此结果回复，无需再调用工具。"}
                     ]
-                    backup_resp = self.client.chat.completions.create(
+                    current_response = self.client.chat.completions.create(
                         model=self.used_model,
-                        messages=raw_messages,
+                        messages=flattened,
                         stream=True,
                         temperature=0.3
                     )
-                    backup_has_yielded = False
-                    for chunk in backup_resp:
-                        if chunk.choices and chunk.choices[0].delta.content:
-                            backup_has_yielded = True
-                            yield chunk.choices[0].delta.content
-                    
-                    if not backup_has_yielded:
-                        yield f"\n\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.used_model}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\n\n{str(result)[:2000]}..."
                 except Exception as backup_e:
-                    # 如果兜底也失败了（比如上下文依然超限，或者被限流 API报错）
-                    yield f"\n\n> ⚠️ **[系统强制接管]**: 该低阶算力节点彻底崩溃 (报错: {str(backup_e)})。原始物理探测情报截取如下：\n\n{str(result)[:2000]}..."
+                    yield f"\n\n> 🛑 **[逻辑断裂]**: AGI 连续思考熔断，底座崩塌: {str(backup_e)}"
+                    break
 
 
 # ==========================================
