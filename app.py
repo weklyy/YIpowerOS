@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from core.llm import get_llm_node
 from core.automation import init_automation, get_jobs
+from core.memory import save_memory, load_recent_memory, clear_memory
 
 # 预加载本地环境变量
 # 预加载本地环境变量
@@ -164,6 +165,13 @@ with st.sidebar:
             st.caption(f"下一次唤醒: {job['next_run_time'].strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         st.caption("暂无挂载异步任务。")
+        
+    st.markdown("---")
+    st.markdown("### 💾 记忆中枢")
+    if st.button("🧨 格式化物理记忆库"):
+        clear_memory()
+        st.session_state.messages = []
+        st.rerun()
 
 # ==========================================
 # 主面板：系统状态与对话流
@@ -171,14 +179,29 @@ with st.sidebar:
 st.title("YI-CORE // 破军阵")
 st.caption("外佛内道，理正局清。")
 
-# 初始 Session State
+# 初始 Session State 与记忆回放
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 系统打招呼
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "> [SYSTEM]: 主理人协议已确认。我是易次方首席算法架构师，已挂载2026丙午年数据库。"
-    })
+    
+    # 尝试抽取历史记忆
+    past_memory = load_recent_memory(limit=20)
+    
+    if len(past_memory) == 0:
+        # 新机体首次启动打招呼
+        first_msg = {
+            "role": "assistant",
+            "content": "> [SYSTEM]: 主理人协议已确认。我是易次方首席算法架构师，已挂载2026丙午年数据库。记忆库初始化完毕。"
+        }
+        st.session_state.messages.append(first_msg)
+        save_memory("assistant", first_msg["content"])
+    else:
+        # 复原记忆
+        st.session_state.messages.extend(past_memory)
+        # 添加一条时空重置提醒 (不纳入长期记忆)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "> [SYSTEM]: 主理人，机体已重新点火。上一片段的记忆体已从 SQLite 物理扇区重载提取完毕。"
+        })
 
 # 渲染历史对话记录流
 for msg in st.session_state.messages:
@@ -189,6 +212,7 @@ for msg in st.session_state.messages:
 if prompt := st.chat_input("输入推演指令 / 执行任务..."):
     # 显示用户指令
     st.session_state.messages.append({"role": "user", "content": prompt})
+    save_memory("user", prompt) # 永久存储动作
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -233,3 +257,4 @@ if prompt := st.chat_input("输入推演指令 / 执行任务..."):
 
     # 追加至对话记录
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+    save_memory("assistant", full_response) # 永久存储动作
