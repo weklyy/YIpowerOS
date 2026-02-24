@@ -353,13 +353,13 @@ def get_llama_instance():
          except Exception as e:
              print(f"视觉神经挂载失败: {e}", file=sys.stderr)
              
-    # 唤醒底层 C++ 的推理引擎！使用物理机的内存。
-    print(f"🧬 [DNA 序列重组中] 正在加载物理大模型至内存...", file=sys.stderr)
+    # 唤醒底层 C++ 的推理引擎！全面激活沉睡的 GT540M 独显！
+    print(f"🧬 [DNA 序列重组中] 正在将物理矩阵载入内存与显存 (GT540M)...", file=sys.stderr)
     _GLOBAL_LLAMA_INSTANCE = Llama(
          model_path=model_path,
          chat_handler=chat_handler,
-         n_ctx=2048, # 限制最大上下文以防止神舟老旧笔记本爆显存
-         n_gpu_layers=0, # 完全榨干 CPU
+         n_ctx=2048, # 限制最大上下文以防止老旧笔记本爆显存
+         n_gpu_layers=-1, # AGI进化: -1代表榨干这块 GT540M 所有的 CUDA 和显存！
          verbose=False
     )
     return _GLOBAL_LLAMA_INSTANCE
