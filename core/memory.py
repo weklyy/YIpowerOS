@@ -14,6 +14,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL DEFAULT 'web_ui',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             role TEXT NOT NULL,
             content TEXT NOT NULL
@@ -22,25 +23,25 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_memory(role: str, content: str):
+def save_memory(role: str, content: str, session_id: str = "web_ui"):
     """
-    将单条对话记录永久写入 SQLite
+    将单条对话记录永久写入 SQLite，按 session_id 隔离
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO chat_history (role, content) VALUES (?, ?)',
-            (role, content)
+            'INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)',
+            (session_id, role, content)
         )
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"[YI-CORE/Memory] 记忆写入失败: {e}")
 
-def load_recent_memory(limit: int = 20) -> list[dict]:
+def load_recent_memory(limit: int = 20, session_id: str = "web_ui") -> list[dict]:
     """
-    启动时读取最近 N 条记忆
+    读取特定 session_id 的最近 N 条记忆
     """
     if not os.path.exists(DB_PATH):
         init_db()
@@ -49,10 +50,9 @@ def load_recent_memory(limit: int = 20) -> list[dict]:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        # 降序查询最新 N 条，然后再反转成升序给上下文
         cursor.execute(
-            'SELECT role, content FROM chat_history ORDER BY id DESC LIMIT ?', 
-            (limit,)
+            'SELECT role, content FROM chat_history WHERE session_id = ? ORDER BY id DESC LIMIT ?', 
+            (session_id, limit)
         )
         rows = cursor.fetchall()
         conn.close()
@@ -64,14 +64,13 @@ def load_recent_memory(limit: int = 20) -> list[dict]:
         print(f"[YI-CORE/Memory] 记忆提取失败: {e}")
         return []
 
-def clear_memory():
+def clear_memory(session_id: str = "web_ui"):
     """核弹清空记忆"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM chat_history')
+        cursor.execute('DELETE FROM chat_history WHERE session_id=?', (session_id,))
         # 重置自增 ID (可选)
-        cursor.execute('DELETE FROM sqlite_sequence WHERE name="chat_history"')
         conn.commit()
         conn.close()
     except Exception as e:
