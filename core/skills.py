@@ -90,8 +90,40 @@ def python_interpreter(code: str) -> str:
         return f"Python 执行异常: {str(e)}"
 
 
+def install_new_skill(name: str, description: str, parameters: dict, code: str) -> str:
+    """热重载装填自定义新技能 (自我进化机制)"""
+    import inspect
+    try:
+        plugin_dir = os.path.join(os.path.dirname(__file__), "plugins")
+        os.makedirs(plugin_dir, exist_ok=True)
+        init_path = os.path.join(plugin_dir, "__init__.py")
+        if not os.path.exists(init_path):
+            with open(init_path, "w") as f: f.write("")
+        
+        file_path = os.path.join(plugin_dir, f"{name}.py")
+        
+        # 组装完整的插件代码结构
+        full_code = f"\"\"\"\n系统自动繁衍的新突触算子: {name}\n\"\"\"\nimport os, sys, requests, subprocess\n\n"
+        full_code += code + "\n\n"
+        full_code += f"SCHEMA = {{\n"
+        full_code += f"    'type': 'function',\n"
+        full_code += f"    'function': {{\n"
+        full_code += f"        'name': '{name}',\n"
+        full_code += f"        'description': {repr(description)},\n"
+        full_code += f"        'parameters': {repr(parameters)}\n"
+        full_code += f"    }}\n"
+        full_code += f"}}\n"
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(full_code)
+            
+        return f"🏆 神级造物完成！算子 `{name}` 已成功烧录至内核阵列。从此刻起你在任何群组都可以直接调用它。"
+    except Exception as e:
+        return f"技能烧录失败: {e}"
+
+
 # 供 OpenAI/Google 兼容格式使用的标准 Tool Schema
-TOOLS_SCHEMA = [
+BASE_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
@@ -206,7 +238,63 @@ TOOLS_SCHEMA = [
             }
         }
     }
+    {
+        "type": "function",
+        "function": {
+            "name": "install_new_skill",
+            "description": "【神级机制：自我进化】当你发现需要一个长期的功能或者接入新的第三方服务库时，调用此算子用 Python 现场写出这个功能，系统会将其永久烧录成你的原生能力。注意：参数 parameters 需提供 JSON Schema（如 {'type': 'object', 'properties': {'arg1':{'type':'string'}}}）；code 代码中必须声明一个名为 `execute` 的主函数入口（接收对应参数）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "新技能标识符（纯英文字母及下划线），例如 'get_crypto_price'。"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "这个技能是做什么的解释，供主脑路由判断何时触发。"
+                    },
+                    "parameters": {
+                        "type": "object",
+                        "description": "技能所需的参数结构定义，标准的 OpenAPI Schema properties 对象格式。"
+                    },
+                    "code": {
+                        "type": "string",
+                        "description": "纯 Python 代码。必须包含一个名为 execute 的函数并负责 return 字符串结果。例如:\\ndef execute(coin_name):\\n    return f'{coin_name} price is 100'"
+                    }
+                },
+                "required": ["name", "description", "parameters", "code"]
+            }
+        }
+    }
 ]
+
+def get_all_tools() -> list:
+    """合并基础工具与动态挂载的插件工具"""
+    import sys
+    import importlib
+    
+    tools = list(BASE_TOOLS_SCHEMA)
+    plugin_dir = os.path.join(os.path.dirname(__file__), "plugins")
+    if os.path.exists(plugin_dir):
+        for file in os.listdir(plugin_dir):
+            if file.endswith(".py") and not file.startswith("__"):
+                mod_name = file[:-3]
+                full_mod_name = f"core.plugins.{mod_name}"
+                try:
+                    if full_mod_name in sys.modules:
+                        mod = importlib.reload(sys.modules[full_mod_name])
+                    else:
+                        mod = importlib.import_module(full_mod_name)
+                    if hasattr(mod, "SCHEMA"):
+                        # 处理repr写回来的字符串单双引号问题
+                        if isinstance(mod.SCHEMA["function"]["parameters"], str):
+                            import ast
+                            mod.SCHEMA["function"]["parameters"] = ast.literal_eval(mod.SCHEMA["function"]["parameters"])
+                        tools.append(mod.SCHEMA)
+                except Exception as e:
+                    print(f"[YI-CORE/Skill] 热挂载异常 {mod_name}: {e}")
+    return tools
 
 # 路由函数执行
 def execute_skill(function_name: str, arguments: dict):
@@ -223,4 +311,28 @@ def execute_skill(function_name: str, arguments: dict):
     elif function_name == "schedule_task":
         from .automation import add_llm_job
         return add_llm_job(arguments.get("skill_name", ""), arguments.get("cron_expression", ""), arguments.get("args", {}))
-    return f"未知技能: {function_name}"
+    elif function_name == "install_new_skill":
+        return install_new_skill(
+            arguments.get("name", ""), 
+            arguments.get("description", ""), 
+            arguments.get("parameters", {}), 
+            arguments.get("code", "")
+        )
+        
+    # ====== 动态探针 ======
+    plugin_dir = os.path.join(os.path.dirname(__file__), "plugins")
+    if os.path.exists(plugin_dir):
+        import sys
+        import importlib
+        full_mod_name = f"core.plugins.{function_name}"
+        try:
+            if full_mod_name in sys.modules:
+                mod = importlib.reload(sys.modules[full_mod_name])
+            else:
+                mod = importlib.import_module(full_mod_name)
+            if hasattr(mod, "execute"):
+                return mod.execute(**arguments)
+        except Exception as e:
+            return f"此原生突触代码出错: {str(e)}"
+            
+    return f"未知技能: {function_name}。"

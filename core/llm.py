@@ -76,8 +76,8 @@ class OpenRouterNode(BaseNode):
         
         openai_tools = None
         if tools:
-            from .skills import TOOLS_SCHEMA
-            openai_tools = TOOLS_SCHEMA
+            from .skills import get_all_tools
+            openai_tools = get_all_tools()
             
         try:
             response = self.client.chat.completions.create(
