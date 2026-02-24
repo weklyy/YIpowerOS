@@ -1,0 +1,27 @@
+[Unit]
+Description=YI-CORE Swarm OS Telegram Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 将这里的 User 替换为您神舟电脑的登录用户名
+User=root
+# 替换为 YIpowerOS 代码库的根目录，比如 /home/user/YIpowerOS/yi-core
+WorkingDirectory=/opt/YIpowerOS/yi-core
+# 指向您项目里的虚拟环境 Python 执行器
+ExecStart=/opt/YIpowerOS/yi-core/venv/bin/python /opt/YIpowerOS/yi-core/core/telegram_hub.py
+
+# ==========================
+# 物理隔离重启法则: 绝对不死
+# ==========================
+Restart=always
+# 如果意外崩溃，歇 5 秒立刻复活
+RestartSec=5
+
+# 如果有代理环境变量，除了在 .env 里写，也可以在这里强行注入保底
+# Environment="HTTPS_PROXY=http://127.0.0.1:7890"
+# Environment="HTTP_PROXY=http://127.0.0.1:7890"
+
+[Install]
+WantedBy=multi-user.target
