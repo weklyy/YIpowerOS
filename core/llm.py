@@ -67,6 +67,7 @@ class OpenRouterNode(BaseNode):
         # 支持逗号分隔的备用物理节点池
         self.model_pool = [m.strip() for m in model_name.split(",")] if "," in model_name else [model_name]
         self.used_model = self.model_pool[0]
+        self.model_name = self.used_model  # 恢复对旧版 Web UI 的兼容
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -86,6 +87,7 @@ class OpenRouterNode(BaseNode):
 
         for attempt_idx, model in enumerate(self.model_pool):
             self.used_model = model
+            self.model_name = model # 同步更新对外暴露的型号
             try:
                 response = self.client.chat.completions.create(
                     model=model,
