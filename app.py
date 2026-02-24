@@ -10,7 +10,7 @@ from core.automation import init_automation, get_jobs
 load_dotenv()
 
 # ==========================================
-# 页面配置：Dark Mode & Minimalist
+# 页面配置：Light Mode & Minimalist
 # ==========================================
 st.set_page_config(
     page_title="YI-CORE // 破军阵",
@@ -19,24 +19,25 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 强制注入自定义暗色/极简 CSS
+# 强制注入自定义浅色/极简 CSS
 st.markdown("""
     <style>
     /* 隐藏 Streamlit 自带的右上角菜单和底部 Footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    /* 全局暗色极简调优 */
+    /* 全局浅色极简调优 */
     .stApp {
-        background-color: #0E1117;
-        color: #C9D1D9;
+        background-color: #F8F9FA;
+        color: #202124;
         font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .css-1d391kg {
-        background-color: #161B22;
+        background-color: #FFFFFF;
+        border-right: 1px solid #EAEAEA;
     }
     /* 标题冷峻化 */
     h1, h2, h3 {
-        color: #8B949E !important;
+        color: #3C4043 !important;
         font-weight: 500 !important;
         letter-spacing: 0.1em;
     }
@@ -45,6 +46,33 @@ st.markdown("""
 
 # 初始化异步挂载引擎
 init_automation()
+
+# ==========================================
+# 安全门禁 (Security Sandbox)
+# ==========================================
+def check_password():
+    """返回验证状态。如果需要验证，则渲染输入框阻止流执行。"""
+    
+    # 尝试从环境变量获取预设密码 (如果没有配置则默认为 yipower_2026)
+    sys_password = os.getenv("YICORE_PASSWORD", "yipower_2026")
+    
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        st.markdown("<h2 style='text-align: center; margin-top: 20%;'>🔒 [AUTH_REQUIRED] YI-CORE</h2>", unsafe_allow_html=True)
+        pwd = st.text_input("终端接管秘钥：", type="password")
+        if pwd:
+            if pwd == sys_password:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("❌ 识别失败，禁止登入。")
+        return False
+    return True
+
+if not check_password():
+    st.stop()  # 密码不正确，停止喧染后面的代码
 
 # ==========================================
 # 侧边栏：算力切换与状态控制面板
