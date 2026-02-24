@@ -18,7 +18,7 @@ class SwarmSystem:
         
     def get_agent_identity_prompt(self, agent_name: str) -> str:
         agent = self.agents.get(agent_name, self.agents["CEO"])
-        return f"【职能覆盖注入】: 你现在是群组/任务中的 {agent.name} 身份。你的职责法则：{agent.instruction}\\n如果当前群组被划分为某固定阵地，请绝对服从阵地指令。"
+        return f"【职能覆盖注入】: 你现在是群组/任务中的 {agent.name} 身份。你的职责法则：{agent.instruction}\n如果当前群组被划分为某固定阵地，请绝对服从阵地指令。"
 
     def process_chat(self, chat_id: str, message: str, group_role_context: str = ""):
         """
@@ -32,7 +32,7 @@ class SwarmSystem:
         # 组装请求：包含全局背景与群组独有职能
         sys_prompt = self.get_agent_identity_prompt("CEO")
         if group_role_context:
-            sys_prompt += f"\\n\\n【本阵地强制规则】: {group_role_context}"
+            sys_prompt += f"\n\n【本阵地强制规则】: {group_role_context}"
             
         messages = [{"role": m["role"], "content": m["content"]} for m in history]
         messages.append({"role": "user", "content": message})

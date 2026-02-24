@@ -24,8 +24,8 @@ def web_search(query: str, max_results: int = 3) -> str:
         if not results:
             return "检索无结果。"
         
-        summary = "\\n".join(
-            [f"标题: {r.get('title', '未知')}\\n链接: {r.get('href', '未知')}\\n摘要: {r.get('body', '无')}" for r in results]
+        summary = "\n".join(
+            [f"标题: {r.get('title', '未知')}\n链接: {r.get('href', '未知')}\n摘要: {r.get('body', '无')}" for r in results]
         )
         return summary
     except Exception as e:
@@ -55,7 +55,7 @@ def read_file(path: str) -> str:
             content = f.read()
             # 防止单次返回过长，截断头尾
             if len(content) > 10000:
-                return content[:5000] + "\\n...[中间部分省略]...\\n" + content[-5000:]
+                return content[:5000] + "\n...[中间部分省略]...\n" + content[-5000:]
             return content
     except Exception as e:
         return f"读取文件失败: {str(e)}"
@@ -260,7 +260,7 @@ BASE_TOOLS_SCHEMA = [
                     },
                     "code": {
                         "type": "string",
-                        "description": "纯 Python 代码。必须包含一个名为 execute 的函数并负责 return 字符串结果。例如:\\ndef execute(coin_name):\\n    return f'{coin_name} price is 100'"
+                        "description": "纯 Python 代码。必须包含一个名为 execute 的函数并负责 return 字符串结果。例如:\ndef execute(coin_name):\n    return f'{coin_name} price is 100'"
                     }
                 },
                 "required": ["name", "description", "parameters", "code"]

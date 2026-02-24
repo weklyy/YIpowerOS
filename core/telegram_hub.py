@@ -32,8 +32,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     welcome_msg = (
-        "🔗 **[YI-CORE // 破军阵 联邦中枢] 已接入**\\n\\n"
-        f"该阵地唯一信标 ID: `{chat_id}`\\n"
+        "🔗 **[YI-CORE // 破军阵 联邦中枢] 已接入**\n\n"
+        f"该阵地唯一信标 ID: `{chat_id}`\n"
         "主理人，请下达任务指令。CEO 及其联邦下属节点已就位，随时准备拆解或执行网关算子。"
     )
     await update.message.reply_text(welcome_msg, parse_mode='Markdown')
@@ -52,7 +52,7 @@ async def set_group_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     context.chat_data["group_role"] = rules
-    await update.message.reply_text(f"✅ **阵地法则已烙印**:\\n{rules}\\n\\n以后的每一次指令，联邦特工都将服从该最高规则。", parse_mode='Markdown')
+    await update.message.reply_text(f"✅ **阵地法则已烙印**:\n{rules}\n\n以后的每一次指令，联邦特工都将服从该最高规则。", parse_mode='Markdown')
 
 async def run_benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -68,17 +68,17 @@ async def run_benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     models = [m.strip() for m in models_str.split(",") if m.strip()]
     
-    status_msg = await update.message.reply_text("🚨 **[联邦征兵测试已启动]**\\n\\n正在并发下放高压考卷 (Logic, Tool, Security)...请等待系统汇报榜单 (耗时约1-3分钟)。", parse_mode='Markdown')
+    status_msg = await update.message.reply_text("🚨 **[联邦征兵测试已启动]**\n\n正在并发下放高压考卷 (Logic, Tool, Security)...请等待系统汇报榜单 (耗时约1-3分钟)。", parse_mode='Markdown')
     
     try:
         loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(None, benchmark_engine.batch_run, models)
         
-        reply = "🏆 **【算力大逃杀 终局榜单】**\\n\\n"
+        reply = "🏆 **【算力大逃杀 终局榜单】**\n\n"
         for idx, res in enumerate(results):
-            reply += f"🏅 Rank {idx+1}: `{res['model_name']}`\\n"
-            reply += f"⊢ 智能评级: **{res['rating']}** (得分:{res['overall_score']})\\n"
-            reply += f"⊢ 生存通关率: {res['success_rate']}\\n\\n"
+            reply += f"🏅 Rank {idx+1}: `{res['model_name']}`\n"
+            reply += f"⊢ 智能评级: **{res['rating']}** (得分:{res['overall_score']})\n"
+            reply += f"⊢ 生存通关率: {res['success_rate']}\n\n"
             
         rec_cfg = benchmark_engine.generate_swarm_dispatch_recommendation(results)
         
@@ -89,10 +89,10 @@ async def run_benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(config_file, "w") as f:
             json.dump(rec_cfg, f, indent=4)
             
-        reply += "⚙️ **【联邦职能重组报告】**\\n系统已根据各节点专长，将最优胜者自动硬编码至底层：\\n"
-        reply += f"🧠 破军枢纽 (CEO): `{rec_cfg.get('CEO')}`\\n"
-        reply += f"💻 硅基黑客 (Coder): `{rec_cfg.get('Coder')}`\\n"
-        reply += f"📣 情报宣发 (Social): `{rec_cfg.get('Social')}`\\n\\n"
+        reply += "⚙️ **【联邦职能重组报告】**\n系统已根据各节点专长，将最优胜者自动硬编码至底层：\n"
+        reply += f"🧠 破军枢纽 (CEO): `{rec_cfg.get('CEO')}`\n"
+        reply += f"💻 硅基黑客 (Coder): `{rec_cfg.get('Coder')}`\n"
+        reply += f"📣 情报宣发 (Social): `{rec_cfg.get('Social')}`\n\n"
         reply += "*从此刻起，全阵地已采用此神阶编制为您效命。*"
         
         await status_msg.edit_text(reply, parse_mode='Markdown')
@@ -119,9 +119,9 @@ async def get_sysinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fallback_models = os.getenv("OPENROUTER_DEFAULT_MODELS", "默认保底池")
     
     msg = (
-        "📊 **【YI-CORE // 破军阵 仪表盘】**\\n\\n"
-        f"👑 当前主脑 (CEO): `{ceo_model}`\\n"
-        f"🛡️ 替补存活阵列: `{fallback_models}`\\n\\n"
+        "📊 **【YI-CORE // 破军阵 仪表盘】**\n\n"
+        f"👑 当前主脑 (CEO): `{ceo_model}`\n"
+        f"🛡️ 替补存活阵列: `{fallback_models}`\n\n"
         "💡 提示：键入 `/role` 可为当前群组注入独立人格；键入 `/benchmark` 可开启选拔并洗牌挂载架构。"
     )
     await update.message.reply_text(msg, parse_mode='Markdown')
@@ -164,7 +164,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text(reply)
             
     except Exception as e:
-        await status_msg.edit_text(f"🛑 [系统异常截断] 联邦节点遭遇了物理宕机或算力断裂:\\n{str(e)}")
+        await status_msg.edit_text(f"🛑 [系统异常截断] 联邦节点遭遇了物理宕机或算力断裂:\n{str(e)}")
 
 def start_hub():
     if not TELEGRAM_BOT_TOKEN:

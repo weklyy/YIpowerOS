@@ -109,21 +109,21 @@ class OpenRouterNode(BaseNode):
                         )
                         response = response_no_tool
                         has_tools_active = False # 当前局禁用 tools
-                        yield f"\\n\\n> 🔕 **[算力警告]**: 节点 `{model}` 不具备原生算子挂载能力，已降维至纯文本模式。\\n\\n"
+                        yield f"\n\n> 🔕 **[算力警告]**: 节点 `{model}` 不具备原生算子挂载能力，已降维至纯文本模式。\n\n"
                         break
                     except Exception as e2:
                         pass
                 
                 # 如果纯文本也崩溃（如 429 免费额度耗尽）
                 if attempt_idx == len(self.model_pool) - 1:
-                    yield f"\\n\\n> 🛑 **[算力枯竭]**: 整个配置的模型阵列已全部宕机或被风控，最后节点 `{model}` 报错: {str(e)}"
+                    yield f"\n\n> 🛑 **[算力枯竭]**: 整个配置的模型阵列已全部宕机或被风控，最后节点 `{model}` 报错: {str(e)}"
                     return
                 else:
-                    yield f"\\n\\n> ⚠️ **[节点切换]**: `{model}` 阵亡或被阻断，自动引流至下一备用节点 `{self.model_pool[attempt_idx+1]}`...\\n\\n"
+                    yield f"\n\n> ⚠️ **[节点切换]**: `{model}` 阵亡或被阻断，自动引流至下一备用节点 `{self.model_pool[attempt_idx+1]}`...\n\n"
                     continue
         
         # 加入强制主脑水印
-        yield f"\\n🚀 **【当前执飞节点】: `{self.used_model}`**\\n\\n"
+        yield f"\n🚀 **【当前执飞节点】: `{self.used_model}`**\n\n"
         
         tool_calls_dict = {}
         is_tool_call = False
@@ -200,7 +200,7 @@ class OpenRouterNode(BaseNode):
                 try:
                     raw_messages = [
                         {"role": "system", "content": self.system_instruction},
-                        {"role": "user", "content": f"先前指令: {messages[-1]['content']}\\n\\n[系统自动挂载了算子并获取到了以下数据：]\\n{str(result)}\\n\\n请根据上述数据，冷峻地回答主理人的指令。"}
+                        {"role": "user", "content": f"先前指令: {messages[-1]['content']}\n\n[系统自动挂载了算子并获取到了以下数据：]\n{str(result)}\n\n请根据上述数据，冷峻地回答主理人的指令。"}
                     ]
                     backup_resp = self.client.chat.completions.create(
                         model=self.used_model,
@@ -215,10 +215,10 @@ class OpenRouterNode(BaseNode):
                             yield chunk.choices[0].delta.content
                     
                     if not backup_has_yielded:
-                        yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.used_model}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
+                        yield f"\n\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.used_model}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\n\n{str(result)[:2000]}..."
                 except Exception as backup_e:
                     # 如果兜底也失败了（比如上下文依然超限，或者被限流 API报错）
-                    yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点彻底崩溃 (报错: {str(backup_e)})。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
+                    yield f"\n\n> ⚠️ **[系统强制接管]**: 该低阶算力节点彻底崩溃 (报错: {str(backup_e)})。原始物理探测情报截取如下：\n\n{str(result)[:2000]}..."
 
 
 # ==========================================
