@@ -86,6 +86,23 @@ with st.sidebar:
         help="Google: 搭载 Gemini-2.5-Pro 重型算力\\nOpenRouter: 搭载高性价比轻型开源算力"
     )
     
+    selected_model = None
+    if engine_choice == "OpenRouter":
+        st.markdown("#### 🧠 模型指定")
+        or_model_options = [
+            "deepseek/deepseek-chat",
+            "deepseek/deepseek-reasoner",
+            "anthropic/claude-3-haiku",
+            "meta-llama/llama-3.3-70b-instruct",
+            "google/gemini-2.5-flash",
+            "自定义 (Manual)"
+        ]
+        or_model_choice = st.selectbox("选择或输入模型名", or_model_options)
+        if or_model_choice == "自定义 (Manual)":
+            selected_model = st.text_input("填入 OpenRouter Model ID:", "openai/gpt-4o-mini")
+        else:
+            selected_model = or_model_choice
+
     st.markdown("---")
     st.markdown("### ⚙️ 后台守护进程")
     jobs = get_jobs()
@@ -130,7 +147,7 @@ if prompt := st.chat_input("输入推演指令 / 执行任务..."):
         
         try:
             # 获取算子节点
-            node = get_llm_node(engine_choice)
+            node = get_llm_node(engine_choice, selected_model)
             
             # TODO: 将历史消息格式化以适应不同节点的参数，此处仅传最新一条和较短的记录做演示
             request_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages if m["role"] == "user"]

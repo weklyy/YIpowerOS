@@ -90,11 +90,12 @@ class OpenRouterNode(BaseNode):
 # ==========================================
 # The Chimera Router (重型轻型调度网关)
 # ==========================================
-def get_llm_node(router_name: str):
+def get_llm_node(router_name: str, model_name: str = None):
     """
     根据前端指令提供具体的底层物理节点
     """
     if router_name == "Google":
         return GoogleNode("gemini-2.5-pro")
     else:
-        return OpenRouterNode("deepseek/deepseek-chat")
+        target_model = model_name if model_name else "deepseek/deepseek-chat"
+        return OpenRouterNode(target_model)
