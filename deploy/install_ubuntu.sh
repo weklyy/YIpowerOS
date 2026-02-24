@@ -7,7 +7,7 @@ echo "🚀 YI-CORE 物理降临协议（Ubuntu神舟）"
 echo "=========================================="
 
 echo "[1/4] 安装底层物理环境..."
-sudo apt-update
+sudo apt update
 sudo apt install -y python3 python3-venv python3-pip git
 
 echo "[2/4] 初始化神经沙盒 (venv)..."
