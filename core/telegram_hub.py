@@ -132,14 +132,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"[TG/Drop] 未授权的信标探测: {chat_id}")
         return
 
-    text = update.message.text
-    if not text:
+    text = update.message.text or update.message.caption or ""
+    
+    # 【感官进化】：检测是否包含图片 (视网膜输入)
+    image_b64 = None
+    if update.message.photo:
+        try:
+            print(f"[TG/Recv] 收到信标 {chat_id} 传回的视觉影像流...")
+            # 取最高分辨率的图
+            photo = update.message.photo[-1]
+            file = await context.bot.get_file(photo.file_id)
+            # 下载到内存
+            import io, base64
+            img_byte_arr = io.BytesIO()
+            await file.download_to_memory(out=img_byte_arr)
+            img_byte_arr.seek(0)
+            image_b64 = base64.b64encode(img_byte_arr.read()).decode('utf-8')
+            if not text:
+                 text = "请简要描述这张图里有什么。"
+        except Exception as e:
+            await update.message.reply_text(f"🛑 神经视觉通道解析失败: {e}")
+            return
+            
+    if not text and not image_b64:
         return
         
-    print(f"[TG/Recv] 来自信标 {chat_id} 的指令: {text[:50]}...")
+    print(f"[TG/Recv] 来自信标 {chat_id} 的指令: {text[:50]}... [图片附加: {bool(image_b64)}]")
     
     # 立即响应防止超时
-    status_msg = await update.message.reply_text("⏳ 联邦算力节点推演中...")
+    status_msg = await update.message.reply_text("⏳ 原生视觉与算力节点联合推演中...")
     
     try:
         group_role = context.chat_data.get("group_role", "")
@@ -151,7 +172,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             swarm_engine.process_chat, 
             chat_id, 
             text, 
-            group_role
+            group_role,
+            image_b64
         )
         
         # 字数过长时切片发送
@@ -178,7 +200,7 @@ def start_hub():
     application.add_handler(CommandHandler("role", set_group_role))
     application.add_handler(CommandHandler("benchmark", run_benchmark))
     application.add_handler(CommandHandler("sysinfo", get_sysinfo))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO & ~filters.COMMAND, handle_message))
 
     # 运行轮询
     application.run_polling()

@@ -20,9 +20,9 @@ class SwarmSystem:
         agent = self.agents.get(agent_name, self.agents["CEO"])
         return f"【职能覆盖注入】: 你现在是群组/任务中的 {agent.name} 身份。你的职责法则：{agent.instruction}\n如果当前群组被划分为某固定阵地，请绝对服从阵地指令。"
 
-    def process_chat(self, chat_id: str, message: str, group_role_context: str = ""):
+    def process_chat(self, chat_id: str, message: str, group_role_context: str = "", image_b64: str = None):
         """
-        接入社交渠道的一次提问。
+        接入社交渠道的一次提问。支持视觉图片的挂载。
         """
         from core.memory import load_recent_memory, save_memory
         
@@ -35,10 +35,19 @@ class SwarmSystem:
             sys_prompt += f"\n\n【本阵地强制规则】: {group_role_context}"
             
         messages = [{"role": m["role"], "content": m["content"]} for m in history]
-        messages.append({"role": "user", "content": message})
         
-        # 默认保存主理人的提问
-        save_memory("user", message, session_id=chat_id)
+        # AGI感官集成: 如果附加了视网膜源(图片)，转为多模态传入协议
+        if image_b64:
+             content_payload = [
+                  {"type": "text", "text": message},
+                  {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+             ]
+             messages.append({"role": "user", "content": content_payload})
+             save_memory("user", f"[发送了一张图片] {message}", session_id=chat_id)
+        else:
+             messages.append({"role": "user", "content": message})
+             # 默认保存主理人的提问
+             save_memory("user", message, session_id=chat_id)
         
         import os, json
         # 提取环境变量，检查是否强制开启本土生存模式

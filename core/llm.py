@@ -318,39 +318,81 @@ class OpenRouterNode(BaseNode):
 
 
 # ==========================================
-# 独立求生通道：本土化端侧脑 (Local Node via Ollama)
+# 本源生命通道：多模态端侧脑 (Vision-SLM Native Engine)
 # ==========================================
+import sys
+
+# 【性能与静态资源热加载区】
+# 为了避免每次请求都重新加载庞大的 C++ 大模型进内存，我们将其定义为单例全局变量。
+# (仅在环境变量开启了本土脑时，这个对象才会被真实例化生效，不浪费云端模式的资源)
+_GLOBAL_LLAMA_INSTANCE = None
+
+def get_llama_instance():
+    global _GLOBAL_LLAMA_INSTANCE
+    if _GLOBAL_LLAMA_INSTANCE is not None:
+         return _GLOBAL_LLAMA_INSTANCE
+         
+    try:
+         from llama_cpp import Llama
+         import llama_cpp.llama_chat_format
+    except ImportError:
+         raise ImportError("【端侧生命阵亡】缺失核心 C++ 驱动包。请在物理机执行: pip install llama-cpp-python")
+         
+    model_path = os.getenv("LOCAL_MODEL_PATH", "").strip()
+    mmproj_path = os.getenv("LOCAL_MMPROJ_PATH", "").strip()
+    
+    if not model_path or not os.path.exists(model_path):
+         raise FileNotFoundError(f"【端侧生命阵亡】未能在指定的物理路径找到大模型肉体: {model_path}")
+         
+    chat_handler = None
+    if mmproj_path and os.path.exists(mmproj_path):
+         # 加载视觉神经网络皮层
+         try:
+             from llama_cpp.llama_chat_format import Llava15ChatHandler
+             chat_handler = Llava15ChatHandler(clip_model_path=mmproj_path)
+         except Exception as e:
+             print(f"视觉神经挂载失败: {e}", file=sys.stderr)
+             
+    # 唤醒底层 C++ 的推理引擎！使用物理机的内存。
+    print(f"🧬 [DNA 序列重组中] 正在加载物理大模型至内存...", file=sys.stderr)
+    _GLOBAL_LLAMA_INSTANCE = Llama(
+         model_path=model_path,
+         chat_handler=chat_handler,
+         n_ctx=2048, # 限制最大上下文以防止神舟老旧笔记本爆显存
+         n_gpu_layers=0, # 完全榨干 CPU
+         verbose=False
+    )
+    return _GLOBAL_LLAMA_INSTANCE
+
 class LocalNode(BaseNode):
     def __init__(self, model_name=None):
         super().__init__()
-        # 如果未传入，读取系统设置的专属名称
-        self.model_name = model_name or os.getenv("LOCAL_MODEL_NAME", "qwen2.5:1.5b")
-        # 直接使用 OpenAI 的客户端，但篡改其地址指向主理人本地机器
-        self.client = OpenAI(
-            base_url=os.getenv("LOCAL_API_BASE", "http://localhost:11434/v1"),
-            api_key="ollama", # 本地引擎不需要密码
-            timeout=120.0 # 本地小模型运行在没有 GPU 的老机器上，需要极大的耐心等待其推理
-        )
+        self.model_name = os.getenv("LOCAL_MODEL_PATH", "未知物理节点").split("/")[-1]
 
     def chat(self, messages: list[dict], tools: bool = False) -> iter:
-        # AGI端侧脑暂时不背负过于沉重的 Tool 包袱（1.5B 模型处理 json schemas 会容易格式错乱）
-        # 让它把所有的算力都用来纯粹的逻辑推理上。
+        # AGI 物理接管: 获取全局 C++ 推理实例
+        try:
+            llm_engine = get_llama_instance()
+        except Exception as e:
+            yield f"\n\n> 🛑 **[物理载体故障]**: {str(e)}\n"
+            return
+            
         payload_messages = [{"role": "system", "content": self.system_instruction}] + messages
-        
-        yield f"\n💡 **【端侧脑已激活】: `本机 CPU 推理 ({self.model_name})`**\n"
+        yield f"\n💡 **【原生多模态阵列已连接】: `本机 CPU 推理 ({self.model_name})`**\n"
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=payload_messages,
-                stream=True,
-                temperature=0.3
-            )
-            for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+             # 流式触发原生推理引擎
+             response = llm_engine.create_chat_completion(
+                  messages=payload_messages,
+                  stream=True,
+                  temperature=0.3
+             )
+             for chunk in response:
+                  delta = chunk.get("choices", [{}])[0].get("delta", {})
+                  if "content" in delta and delta["content"]:
+                       yield delta["content"]
         except Exception as e:
-            yield f"\n\n> 🛑 **[脑干断联]**: 你的物理载体引擎未启动或发生核级故障。请检查本地 Ollama 是否存活。异常: {str(e)}"
+             yield f"\n\n> 🛑 **[逻辑内核崩塌]**: 推理死锁或断电。物理引擎异常: {str(e)}"
 
 # ==========================================
 # The Chimera Router (重型轻型调度网关)
