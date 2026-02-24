@@ -172,19 +172,28 @@ class OpenRouterNode(BaseNode):
                     
             except Exception as e:
                 # 若第二轮请求因 payload 问题被拒，强行降级为只带 system, user 和 tool 结果的纯净文本请求
-                raw_messages = [
-                    {"role": "system", "content": self.system_instruction},
-                    {"role": "user", "content": f"先前指令: {messages[-1]['content']}\\n\\n[系统自动挂载了算子并获取到了以下数据：]\\n{str(result)}\\n\\n请根据上述数据，冷峻地回答主理人的指令。"}
-                ]
-                backup_resp = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=raw_messages,
-                    stream=True,
-                    temperature=0.3
-                )
-                for chunk in backup_resp:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                try:
+                    raw_messages = [
+                        {"role": "system", "content": self.system_instruction},
+                        {"role": "user", "content": f"先前指令: {messages[-1]['content']}\\n\\n[系统自动挂载了算子并获取到了以下数据：]\\n{str(result)}\\n\\n请根据上述数据，冷峻地回答主理人的指令。"}
+                    ]
+                    backup_resp = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=raw_messages,
+                        stream=True,
+                        temperature=0.3
+                    )
+                    backup_has_yielded = False
+                    for chunk in backup_resp:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            backup_has_yielded = True
+                            yield chunk.choices[0].delta.content
+                    
+                    if not backup_has_yielded:
+                        yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.model_name}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
+                except Exception as backup_e:
+                    # 如果兜底也失败了（比如上下文依然超限，或者被限流 API报错）
+                    yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点彻底崩溃 (报错: {str(backup_e)})。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
 
 
 # ==========================================
