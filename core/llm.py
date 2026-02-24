@@ -79,13 +79,26 @@ class OpenRouterNode(BaseNode):
             from .skills import TOOLS_SCHEMA
             openai_tools = TOOLS_SCHEMA
             
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=payload_messages,
-            stream=True,
-            temperature=0.3,
-            tools=openai_tools
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=payload_messages,
+                stream=True,
+                temperature=0.3,
+                tools=openai_tools
+            )
+        except Exception as first_round_err:
+            # 第一轮发 tools 都直接崩溃的劣质模型，剥夺 tools 权限直接做文本回复
+            fallback_resp = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=payload_messages,
+                stream=True,
+                temperature=0.3
+            )
+            for chunk in fallback_resp:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+            return
         
         tool_calls_dict = {}
         is_tool_call = False

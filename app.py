@@ -124,14 +124,23 @@ with st.sidebar:
         ]
         
         custom_opts = get_custom_models()
-        # 对自定义模型加前缀以便视觉区分
         display_custom_opts = [f"[自定义] {m}" for m in custom_opts]
         
-        or_model_options = base_options + display_custom_opts + ["自定义 (Manual)"]
+        # 插入明显的分隔符来做视觉上的组间隔离
+        or_model_options = (
+            ["--- 🌟 预设主力算子 ---"] + 
+            base_options + 
+            (["--- 🛠️ 您的自定义算子 ---"] + display_custom_opts if display_custom_opts else []) + 
+            ["--- ➕ 其他 ---", "自定义 (Manual)"]
+        )
         
         or_model_choice = st.selectbox("选择或输入模型名", or_model_options)
         
-        if or_model_choice == "自定义 (Manual)":
+        if or_model_choice.startswith("--- "):
+            # 如果不小心选到了分隔符，默认退回到第一个预设模型
+            st.warning("您选到了分隔标签，已自动回归默认算子。")
+            selected_model = base_options[0]
+        elif or_model_choice == "自定义 (Manual)":
             selected_model = st.text_input("填入 OpenRouter Model ID:", "openai/gpt-4o-mini")
             if st.button("➕ 保存该模型"):
                 if selected_model:
@@ -195,10 +204,16 @@ if prompt := st.chat_input("输入推演指令 / 执行任务..."):
             message_placeholder = st.empty()
             full_response = ""
             
-            # TODO: 将历史消息格式化以适应不同节点的参数，此处仅传最新一条和较短的记录做演示
-            request_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages if m["role"] == "user"]
+            # 解决短期记忆问题：携带最近 10 条全量历史（User 和 Assistant）
+            recent_history = st.session_state.messages[-10:] if len(st.session_state.messages) > 10 else st.session_state.messages
+            request_messages = [{"role": m["role"], "content": m["content"]} for m in recent_history if m["role"] in ["user", "assistant"]]
+            # 过滤掉一开始系统打招呼的系统模拟消息，避免一些严格模型报错
+            request_messages = [m for m in request_messages if not (m["role"] == "assistant" and "[SYSTEM]" in m["content"])]
+            
             if not request_messages:
                  request_messages = [{"role": "user", "content": prompt}]
+            # 手动把当前 prompt 推进去，因为前面的 messages 只会在下一次 rerun 被 append，当前这里只是输入框传来的变量
+            # 修正：其实 prompt 已经在 line 182 append 进去了，所以 request_messages 已经包含它了。保持原样。
             
             # 流式获取输出
             for chunk in node.chat(messages=request_messages, tools=True):
