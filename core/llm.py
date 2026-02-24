@@ -64,7 +64,9 @@ class GoogleNode(BaseNode):
 class OpenRouterNode(BaseNode):
     def __init__(self, model_name="deepseek/deepseek-chat"):
         super().__init__()
-        self.model_name = model_name
+        # 支持逗号分隔的备用物理节点池
+        self.model_pool = [m.strip() for m in model_name.split(",")] if "," in model_name else [model_name]
+        self.used_model = self.model_pool[0]
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -79,26 +81,47 @@ class OpenRouterNode(BaseNode):
             from .skills import get_all_tools
             openai_tools = get_all_tools()
             
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=payload_messages,
-                stream=True,
-                temperature=0.3,
-                tools=openai_tools
-            )
-        except Exception as first_round_err:
-            # 第一轮发 tools 都直接崩溃的劣质模型，剥夺 tools 权限直接做文本回复
-            fallback_resp = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=payload_messages,
-                stream=True,
-                temperature=0.3
-            )
-            for chunk in fallback_resp:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-            return
+        response = None
+        has_tools_active = tools
+
+        for attempt_idx, model in enumerate(self.model_pool):
+            self.used_model = model
+            try:
+                response = self.client.chat.completions.create(
+                    model=model,
+                    messages=payload_messages,
+                    stream=True,
+                    temperature=0.3,
+                    tools=openai_tools
+                )
+                break # 获取连接成功
+            except Exception as e:
+                # 若携带 Tool 失败，尝试对该节点降维打击（禁用 Tool）再试一次
+                if has_tools_active:
+                    try:
+                        response_no_tool = self.client.chat.completions.create(
+                            model=model,
+                            messages=payload_messages,
+                            stream=True,
+                            temperature=0.3
+                        )
+                        response = response_no_tool
+                        has_tools_active = False # 当前局禁用 tools
+                        yield f"\\n\\n> 🔕 **[算力警告]**: 节点 `{model}` 不具备原生算子挂载能力，已降维至纯文本模式。\\n\\n"
+                        break
+                    except Exception as e2:
+                        pass
+                
+                # 如果纯文本也崩溃（如 429 免费额度耗尽）
+                if attempt_idx == len(self.model_pool) - 1:
+                    yield f"\\n\\n> 🛑 **[算力枯竭]**: 整个配置的模型阵列已全部宕机或被风控，最后节点 `{model}` 报错: {str(e)}"
+                    return
+                else:
+                    yield f"\\n\\n> ⚠️ **[节点切换]**: `{model}` 阵亡或被阻断，自动引流至下一备用节点 `{self.model_pool[attempt_idx+1]}`...\\n\\n"
+                    continue
+        
+        # 加入强制主脑水印
+        yield f"\\n🚀 **【当前执飞节点】: `{self.used_model}`**\\n\\n"
         
         tool_calls_dict = {}
         is_tool_call = False
@@ -156,7 +179,7 @@ class OpenRouterNode(BaseNode):
             try:
                 has_yielded = False
                 second_resp = self.client.chat.completions.create(
-                    model=self.model_name,
+                    model=self.used_model,
                     messages=payload_messages,
                     stream=True,
                     temperature=0.3
@@ -178,7 +201,7 @@ class OpenRouterNode(BaseNode):
                         {"role": "user", "content": f"先前指令: {messages[-1]['content']}\\n\\n[系统自动挂载了算子并获取到了以下数据：]\\n{str(result)}\\n\\n请根据上述数据，冷峻地回答主理人的指令。"}
                     ]
                     backup_resp = self.client.chat.completions.create(
-                        model=self.model_name,
+                        model=self.used_model,
                         messages=raw_messages,
                         stream=True,
                         temperature=0.3
@@ -190,7 +213,7 @@ class OpenRouterNode(BaseNode):
                             yield chunk.choices[0].delta.content
                     
                     if not backup_has_yielded:
-                        yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.model_name}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
+                        yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点 ({self.used_model}) 获取了情报但拒绝输出。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."
                 except Exception as backup_e:
                     # 如果兜底也失败了（比如上下文依然超限，或者被限流 API报错）
                     yield f"\\n\\n> ⚠️ **[系统强制接管]**: 该低阶算力节点彻底崩溃 (报错: {str(backup_e)})。原始物理探测情报截取如下：\\n\\n{str(result)[:2000]}..."

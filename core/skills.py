@@ -237,7 +237,7 @@ BASE_TOOLS_SCHEMA = [
                 "required": ["skill_name", "cron_expression", "args"]
             }
         }
-    }
+    },
     {
         "type": "function",
         "function": {

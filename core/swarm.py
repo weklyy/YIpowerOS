@@ -40,9 +40,15 @@ class SwarmSystem:
         # 默认保存主理人的提问
         save_memory("user", message, session_id=chat_id)
         
+        import os
+        # 提取高可用算力池配置，没有则降级使用单一模型
+        fallback_models = os.getenv(
+            "OPENROUTER_DEFAULT_MODELS", 
+            "arcee-ai/trinity-large-preview:free,stepfun/step-3.5-flash:free,google/gemini-2.5-pro:free"
+        )
+        
         # 调用核心推演引擎
-        # 这里默认给群聊机器人使用 Deepseek
-        node = get_llm_node("OpenRouter", "deepseek/deepseek-chat")
+        node = get_llm_node("OpenRouter", fallback_models)
         node.system_instruction = sys_prompt
         
         full_response = ""
