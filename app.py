@@ -174,87 +174,85 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 主面板：系统状态与对话流
+# 终端控制台 (Admin Dashboard)
 # ==========================================
-st.title("YI-CORE // 破军阵")
-st.caption("外佛内道，理正局清。")
+st.title("YI-CORE // 破军阵：联邦总控神坛")
+st.caption("外佛内道，理正局清。大模型不再需要人工抽卡，由系统自己考试选拔。")
 
-# 初始 Session State 与记忆回放
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# 引入测跑组件
+from core.benchmark import benchmark_engine
+
+# 配置文件寻址
+import json
+CONFIG_FILE = "core/swarm_config.json"
+def load_swarm_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"CEO": "", "Coder": "", "Social": ""}
+
+def save_swarm_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
+
+tab1, tab2 = st.tabs(["⚔️ Model Arena (算力角斗场)", "🧬 Swarm Dispatcher (群组部属)"])
+
+with tab1:
+    st.subheader("高抗压自动测跑台")
+    st.markdown("填入你想测试的由英文逗号分隔的 OpenRouter `Model ID`（带上 :free 标志），引擎将同步启动并发推演验证其聪明度与挂载原生算子的成功率。")
+    models_input = st.text_area(
+        "候补兵营序列", 
+        "arcee-ai/trinity-large-preview:free, stepfun/step-3.5-flash:free, google/gemini-2.5-pro:free, qwen/qwen-2.5-coder-32b-instruct:free",
+        height=100
+    )
     
-    # 尝试抽取历史记忆
-    past_memory = load_recent_memory(limit=20)
+    if st.button("🩸 注入题目，开始大逃杀测试 (可能耗时数分钟)"):
+        with st.spinner("系统正在疯狂生成并行容器并下放《毁灭性测跑考卷》..."):
+            models = [m.strip() for m in models_input.split(",") if m.strip()]
+            results = benchmark_engine.batch_run(models)
+            
+            st.success("✅ 试炼结束，死生存亡结果已出！")
+            
+            # 展示榜单
+            for idx, res in enumerate(results):
+                with st.expander(f"🏅 Rank {idx+1}: {res['model_name']} | 评级: {res['rating']} | 得分: {res['overall_score']}"):
+                    st.write(f"**综合成功率**: {res['success_rate']}")
+                    st.json(res["details"])
+                    
+            # 自动生成分配建议
+            st.session_state["benchmark_recommendations"] = benchmark_engine.generate_swarm_dispatch_recommendation(results)
+            st.info("💡 测跑数据已生成底层神经元刻画。请前往【Swarm Dispatcher】查阅联邦系统的最终封神榜。")
+
+with tab2:
+    st.subheader("职能联邦分配书")
+    st.markdown("系统将根据各算力的专项特长，将其分拨给不同群聊任务角色。您也可在此进行强制夺权调换。")
     
-    if len(past_memory) == 0:
-        # 新机体首次启动打招呼
-        first_msg = {
-            "role": "assistant",
-            "content": "> [SYSTEM]: 主理人协议已确认。我是易次方首席算法架构师，已挂载2026丙午年数据库。记忆库初始化完毕。"
-        }
-        st.session_state.messages.append(first_msg)
-        save_memory("assistant", first_msg["content"])
-    else:
-        # 复原记忆
-        st.session_state.messages.extend(past_memory)
-        # 添加一条时空重置提醒 (不纳入长期记忆)
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "> [SYSTEM]: 主理人，机体已重新点火。上一片段的记忆体已从 SQLite 物理扇区重载提取完毕。"
-        })
-
-# 渲染历史对话记录流
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# 输入指令舱
-if prompt := st.chat_input("输入推演指令 / 执行任务..."):
-    # 显示用户指令
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    save_memory("user", prompt) # 永久存储动作
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # 调用相应的路由节点
-    with st.chat_message("assistant"):
-        try:
-            # 获取算子节点
-            node = get_llm_node(engine_choice, selected_model)
-            
-            # 【溯源反馈】：前置显示当前调用的真实底层模型
-            st.caption(f"⚡ `[物理链路接管]：{node.model_name}`")
-            
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            # 解决短期记忆问题：携带最近 10 条全量历史（User 和 Assistant）
-            recent_history = st.session_state.messages[-10:] if len(st.session_state.messages) > 10 else st.session_state.messages
-            request_messages = [{"role": m["role"], "content": m["content"]} for m in recent_history if m["role"] in ["user", "assistant"]]
-            # 过滤掉一开始系统打招呼的系统模拟消息，避免一些严格模型报错
-            request_messages = [m for m in request_messages if not (m["role"] == "assistant" and "[SYSTEM]" in m["content"])]
-            
-            if not request_messages:
-                 request_messages = [{"role": "user", "content": prompt}]
-            # 手动把当前 prompt 推进去，因为前面的 messages 只会在下一次 rerun 被 append，当前这里只是输入框传来的变量
-            # 修正：其实 prompt 已经在 line 182 append 进去了，所以 request_messages 已经包含它了。保持原样。
-            
-            # 流式获取输出
-            for chunk in node.chat(messages=request_messages, tools=True):
-                if isinstance(chunk, dict) and chunk.get("type") == "tool_status":
-                    with st.status(chunk["content"], expanded=True):
-                        st.markdown("⏳ 算子执行完毕，等待主脑汇编情报...")
-                elif isinstance(chunk, str):
-                    full_response += chunk
-                    message_placeholder.markdown(full_response + "▌")
-            
-            message_placeholder.markdown(full_response)
+    current_cfg = load_swarm_config()
+    rec_cfg = st.session_state.get("benchmark_recommendations", current_cfg)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("### 🧠 破军枢纽 (CEO)")
+        st.caption("负责解析意图并分发给底层算子。需要逻辑极强。")
+        ceo_val = st.text_input("挂载终端号", value=rec_cfg.get("CEO", current_cfg.get("CEO")), key="ceo_input")
         
-        except Exception as e:
-            err_msg = f"❌ [内核错误]: 算力节点调用失败。详情: {str(e)}"
-            st.error(err_msg)
-            full_response = err_msg
-
-    # 追加至对话记录
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    save_memory("assistant", full_response) # 永久存储动作
+    with col2:
+        st.markdown("### 💻 硅基黑客 (Coder)")
+        st.caption("负责执行 Python 与 Shell 工具挂载。需要不易报错。")
+        coder_val = st.text_input("挂载终端号", value=rec_cfg.get("Coder", current_cfg.get("Coder")), key="coder_input")
+        
+    with col3:
+        st.markdown("### 📣 情报宣发 (Social)")
+        st.caption("负责应对简单问答。需要速度极快、不限流。")
+        social_val = st.text_input("挂载终端号", value=rec_cfg.get("Social", current_cfg.get("Social")), key="social_input")
+        
+    if st.button("🔥 将上述联邦编制熔铸进内核"):
+        new_cfg = {
+            "CEO": ceo_val,
+            "Coder": coder_val,
+            "Social": social_val
+        }
+        save_swarm_config(new_cfg)
+        st.success("✅ 配置已烧录进物理底层。所有关联 Telegram 群组现在会以新脑区工作。")
